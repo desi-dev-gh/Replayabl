@@ -163,6 +163,23 @@ button {
   opacity: 0.72;
 }
 
+.node-text {
+  min-height: calc(100% - 28px);
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+}
+
+.node-text[contenteditable="true"]:focus {
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.45);
+  border-radius: 10px;
+}
+
+.node-text[contenteditable="false"] {
+  cursor: default;
+}
+
 .edge-label {
   fill: #cbd5e1;
   font-size: 12px;

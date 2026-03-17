@@ -16,6 +16,54 @@ const app = appElement;
 
 let showingProposalPreview = Boolean(Object.keys(baseSeedState.proposals).length);
 
+app.addEventListener("focusin", (event) => {
+  const editor = getNodeTextEditor(event.target);
+  if (!editor) {
+    return;
+  }
+
+  editor.dataset.initialText = getEditorText(editor);
+});
+
+app.addEventListener("focusout", (event) => {
+  const editor = getNodeTextEditor(event.target);
+  if (!editor) {
+    return;
+  }
+
+  commitNodeTextEdit(editor);
+});
+
+app.addEventListener("keydown", (event) => {
+  const editor = getNodeTextEditor(event.target);
+  if (!editor) {
+    return;
+  }
+
+  if (event.key === "Escape") {
+    editor.textContent = editor.dataset.initialText ?? "";
+    editor.blur();
+    return;
+  }
+
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    editor.blur();
+  }
+});
+
+app.addEventListener("pointerdown", (event) => {
+  if (getNodeTextEditor(event.target)) {
+    event.stopPropagation();
+  }
+});
+
+app.addEventListener("click", (event) => {
+  if (getNodeTextEditor(event.target)) {
+    event.stopPropagation();
+  }
+});
+
 render();
 
 function render(): void {
@@ -29,6 +77,7 @@ function render(): void {
     ? `<button class="${showingProposalPreview ? "ghost-button" : "primary-button"}" data-action="toggle-preview">${showingProposalPreview ? "Show current state" : "Preview proposal"}</button>`
     : "";
   const eventStream = [...seedWhiteboardEvents, ...uiEvents];
+  const isEditable = !showingProposalPreview;
 
   app.innerHTML = `
     <div class="shell">
@@ -46,7 +95,7 @@ function render(): void {
           <div class="board-surface">
             ${renderEdges(activeState)}
             ${renderGroups(activeState)}
-            ${renderNodes(activeState)}
+            ${renderNodes(activeState, isEditable)}
           </div>
         </div>
       </section>
@@ -90,7 +139,7 @@ function render(): void {
   });
 }
 
-function renderNodes(state: WhiteboardState): string {
+function renderNodes(state: WhiteboardState, isEditable: boolean): string {
   const nodeCards = Object.values(state.nodes)
     .filter((node) => !state.deletedNodeIds[node.id])
     .map((node) => {
@@ -112,7 +161,13 @@ function renderNodes(state: WhiteboardState): string {
       return `
         <article class="node-card" style="${style}">
           <span class="node-kind">${escapeHtml(node.kind)}</span>
-          <div>${escapeHtml(node.text ?? "")}</div>
+          <div
+            class="node-text"
+            data-node-id="${escapeHtml(node.id)}"
+            data-node-text-editor="true"
+            contenteditable="${isEditable ? "true" : "false"}"
+            spellcheck="false"
+          >${escapeHtml(node.text ?? "")}</div>
         </article>
       `;
     })
@@ -250,6 +305,67 @@ function createNoteAt(event: MouseEvent): void {
   });
 
   render();
+}
+
+function commitNodeTextEdit(editor: HTMLElement): void {
+  const nodeId = editor.dataset.nodeId;
+
+  if (!nodeId) {
+    return;
+  }
+
+  const baseState = getBaseState();
+  const node = baseState.nodes[nodeId];
+
+  if (!node || baseState.deletedNodeIds[nodeId]) {
+    return;
+  }
+
+  const nextText = getEditorText(editor);
+  const previousText = node.text ?? "";
+
+  if (nextText === previousText) {
+    return;
+  }
+
+  uiEvents.push({
+    id: `event_ui_node_updated_${uiEvents.length + 1}`,
+    boardId: baseState.board?.id ?? "board_1",
+    branchId: "main",
+    parentEventId: baseState.lastEventId ?? null,
+    actor: {
+      type: "human",
+      id: "demo_user",
+      label: "Demo user",
+    },
+    type: "node.updated",
+    timestamp: new Date().toISOString(),
+    payload: {
+      nodeId,
+      changes: {
+        text: nextText,
+      },
+    },
+    meta: {
+      source: "ui",
+      approvalStatus: "not_required",
+      tags: ["demo", "inline-edit"],
+    },
+  });
+
+  render();
+}
+
+function getNodeTextEditor(target: EventTarget | null): HTMLElement | null {
+  if (!(target instanceof HTMLElement)) {
+    return null;
+  }
+
+  return target.closest<HTMLElement>("[data-node-text-editor='true']");
+}
+
+function getEditorText(editor: HTMLElement): string {
+  return editor.textContent?.replace(/\r\n/g, "\n").trim() ?? "";
 }
 
 function getBaseState(): WhiteboardState {
