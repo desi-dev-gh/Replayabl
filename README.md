@@ -419,6 +419,24 @@ This is about building a better substrate for shared human+AI work.
 
 ---
 
+## Tiny Browser Demo
+
+A minimal local whiteboard demo now ships in this repo.
+
+Run it with:
+
+```bash
+npm install
+npm run dev
+```
+
+Then open the local Vite URL in a browser. The demo:
+
+- replays a seeded whiteboard event stream into state
+- renders nodes, edges, and proposal-generated groups
+- shows a proposal panel with proposed events
+- lets you toggle between the current committed state and a proposal preview
+
 ## Current Status
 
 This is an idea in progress.
