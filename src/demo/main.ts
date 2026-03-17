@@ -14,7 +14,17 @@ if (!appElement) {
 
 const app = appElement;
 
+type DragState = {
+  nodeId: string;
+  pointerId: number;
+  offsetX: number;
+  offsetY: number;
+  didMove: boolean;
+};
+
 let showingProposalPreview = Boolean(Object.keys(baseSeedState.proposals).length);
+let dragState: DragState | null = null;
+let suppressSurfaceClick = false;
 
 app.addEventListener("focusin", (event) => {
   const editor = getNodeTextEditor(event.target);
@@ -53,13 +63,88 @@ app.addEventListener("keydown", (event) => {
 });
 
 app.addEventListener("pointerdown", (event) => {
-  if (getNodeTextEditor(event.target)) {
-    event.stopPropagation();
+  const nodeCard = getNodeCard(event.target);
+  if (!nodeCard) {
+    return;
   }
+
+  event.stopPropagation();
+
+  if (getNodeTextEditor(event.target) || showingProposalPreview) {
+    return;
+  }
+
+  const nodeId = nodeCard.dataset.nodeId;
+  if (!nodeId) {
+    return;
+  }
+
+  const baseState = getBaseState();
+  const node = baseState.nodes[nodeId];
+
+  if (!node || baseState.deletedNodeIds[nodeId]) {
+    return;
+  }
+
+  const boardSurface = nodeCard.closest<HTMLElement>(".board-surface");
+  if (!boardSurface) {
+    return;
+  }
+
+  const rect = boardSurface.getBoundingClientRect();
+  dragState = {
+    nodeId,
+    pointerId: event.pointerId,
+    offsetX: event.clientX - rect.left - node.x,
+    offsetY: event.clientY - rect.top - node.y,
+    didMove: false,
+  };
+
+  nodeCard.setPointerCapture(event.pointerId);
+  event.preventDefault();
 });
 
+app.addEventListener("pointermove", (event) => {
+  if (!dragState || dragState.pointerId !== event.pointerId) {
+    return;
+  }
+
+  const boardSurface = app.querySelector<HTMLElement>(".board-surface");
+  if (!boardSurface) {
+    return;
+  }
+
+  const rect = boardSurface.getBoundingClientRect();
+  const baseState = getBaseState();
+  const node = baseState.nodes[dragState.nodeId];
+
+  if (!node || baseState.deletedNodeIds[dragState.nodeId]) {
+    dragState = null;
+    return;
+  }
+
+  const nextX = Math.max(0, Math.round(event.clientX - rect.left - dragState.offsetX));
+  const nextY = Math.max(0, Math.round(event.clientY - rect.top - dragState.offsetY));
+
+  if (nextX === node.x && nextY === node.y) {
+    return;
+  }
+
+  dragState.didMove = true;
+
+  uiEvents.push(createNodeUpdatedEvent(dragState.nodeId, {
+    x: nextX,
+    y: nextY,
+  }, ["demo", "drag"]));
+
+  render();
+});
+
+app.addEventListener("pointerup", endDrag);
+app.addEventListener("pointercancel", endDrag);
+
 app.addEventListener("click", (event) => {
-  if (getNodeTextEditor(event.target)) {
+  if (getNodeCard(event.target)) {
     event.stopPropagation();
   }
 });
@@ -127,11 +212,17 @@ function render(): void {
 
   app.querySelector<HTMLElement>("[data-action='toggle-preview']")?.addEventListener("click", () => {
     showingProposalPreview = !showingProposalPreview;
+    dragState = null;
     render();
   });
 
   app.querySelector<HTMLElement>(".board-surface")?.addEventListener("click", (event) => {
     if (event.target !== event.currentTarget) {
+      return;
+    }
+
+    if (suppressSurfaceClick) {
+      suppressSurfaceClick = false;
       return;
     }
 
@@ -159,7 +250,7 @@ function renderNodes(state: WhiteboardState, isEditable: boolean): string {
       ].join(";");
 
       return `
-        <article class="node-card" style="${style}">
+        <article class="node-card" data-node-id="${escapeHtml(node.id)}" style="${style}">
           <span class="node-kind">${escapeHtml(node.kind)}</span>
           <div
             class="node-text"
@@ -273,11 +364,10 @@ function createNoteAt(event: MouseEvent): void {
 
   const rect = boardSurface.getBoundingClientRect();
   const nodeId = `node_note_${uiEvents.length + 1}`;
-  const eventId = `event_ui_node_created_${uiEvents.length + 1}`;
   const baseState = getBaseState();
 
   uiEvents.push({
-    id: eventId,
+    id: `event_ui_node_created_${uiEvents.length + 1}`,
     boardId: baseState.board?.id ?? "board_1",
     branchId: "main",
     parentEventId: baseState.lastEventId ?? null,
@@ -328,7 +418,21 @@ function commitNodeTextEdit(editor: HTMLElement): void {
     return;
   }
 
-  uiEvents.push({
+  uiEvents.push(createNodeUpdatedEvent(nodeId, {
+    text: nextText,
+  }, ["demo", "inline-edit"]));
+
+  render();
+}
+
+function createNodeUpdatedEvent(
+  nodeId: string,
+  changes: NonNullable<Extract<WhiteboardEvent, { type: "node.updated" }> ["payload"]>["changes"],
+  tags: string[],
+): Extract<WhiteboardEvent, { type: "node.updated" }> {
+  const baseState = getBaseState();
+
+  return {
     id: `event_ui_node_updated_${uiEvents.length + 1}`,
     boardId: baseState.board?.id ?? "board_1",
     branchId: "main",
@@ -342,18 +446,36 @@ function commitNodeTextEdit(editor: HTMLElement): void {
     timestamp: new Date().toISOString(),
     payload: {
       nodeId,
-      changes: {
-        text: nextText,
-      },
+      changes,
     },
     meta: {
       source: "ui",
       approvalStatus: "not_required",
-      tags: ["demo", "inline-edit"],
+      tags,
     },
-  });
+  };
+}
 
-  render();
+function endDrag(event: PointerEvent): void {
+  if (!dragState || dragState.pointerId !== event.pointerId) {
+    return;
+  }
+
+  const nodeCard = getNodeCard(event.target);
+  if (nodeCard?.hasPointerCapture(event.pointerId)) {
+    nodeCard.releasePointerCapture(event.pointerId);
+  }
+
+  suppressSurfaceClick = dragState.didMove;
+  dragState = null;
+}
+
+function getNodeCard(target: EventTarget | null): HTMLElement | null {
+  if (!(target instanceof HTMLElement)) {
+    return null;
+  }
+
+  return target.closest<HTMLElement>("[data-node-id]");
 }
 
 function getNodeTextEditor(target: EventTarget | null): HTMLElement | null {
