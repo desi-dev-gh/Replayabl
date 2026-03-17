@@ -22,7 +22,7 @@ type DragState = {
   didMove: boolean;
 };
 
-let showingProposalPreview = Boolean(Object.keys(baseSeedState.proposals).length);
+let showingProposalPreview = Boolean(getCurrentProposal(baseSeedState));
 let dragState: DragState | null = null;
 let suppressSurfaceClick = false;
 
@@ -154,11 +154,17 @@ render();
 function render(): void {
   const baseState = getBaseState();
   const proposals = Object.values(baseState.proposals);
-  const firstProposal = proposals[0];
-  const activeState = showingProposalPreview && firstProposal
-    ? replayEvents(firstProposal.proposedEvents, baseState)
+  const currentProposal = getCurrentProposal(baseState);
+  const proposalToShow = currentProposal ?? proposals[0];
+
+  if (!currentProposal && showingProposalPreview) {
+    showingProposalPreview = false;
+  }
+
+  const activeState = showingProposalPreview && currentProposal
+    ? replayEvents(currentProposal.proposedEvents, baseState)
     : baseState;
-  const proposalButton = firstProposal
+  const proposalButton = currentProposal
     ? `<button class="${showingProposalPreview ? "ghost-button" : "primary-button"}" data-action="toggle-preview">${showingProposalPreview ? "Show current state" : "Preview proposal"}</button>`
     : "";
   const eventStream = [...seedWhiteboardEvents, ...uiEvents];
@@ -197,7 +203,7 @@ function render(): void {
           </div>
         </section>
 
-        ${firstProposal ? renderProposalPanel(firstProposal) : ""}
+        ${proposalToShow ? renderProposalPanel(proposalToShow, proposalToShow.id === currentProposal?.id) : ""}
 
         <section class="panel">
           <h3>Event stream</h3>
@@ -216,8 +222,28 @@ function render(): void {
     render();
   });
 
+  app.querySelector<HTMLElement>("[data-action='approve-proposal']")?.addEventListener("click", () => {
+    const latestState = getBaseState();
+    const proposal = getCurrentProposal(latestState);
+    if (!proposal) {
+      return;
+    }
+
+    approveProposal(proposal, latestState);
+  });
+
+  app.querySelector<HTMLElement>("[data-action='reject-proposal']")?.addEventListener("click", () => {
+    const latestState = getBaseState();
+    const proposal = getCurrentProposal(latestState);
+    if (!proposal) {
+      return;
+    }
+
+    rejectProposal(proposal, latestState);
+  });
+
   app.querySelector<HTMLElement>(".board-surface")?.addEventListener("click", (event) => {
-    if (event.target !== event.currentTarget) {
+    if (event.target !== event.currentTarget || showingProposalPreview) {
       return;
     }
 
@@ -339,20 +365,57 @@ function renderGroup(group: Group, state: WhiteboardState): string {
   `;
 }
 
-function renderProposalPanel(proposal: Proposal): string {
+function renderProposalPanel(proposal: Proposal, isCurrentProposal: boolean): string {
+  const actionButtons = isCurrentProposal
+    ? `
+      <div class="proposal-actions">
+        <button class="primary-button" data-action="approve-proposal">Approve</button>
+        <button class="ghost-button danger-button" data-action="reject-proposal">Reject</button>
+      </div>
+    `
+    : "";
+
   return `
     <section class="panel proposal-card">
       <div>
         <h3>${escapeHtml(proposal.title ?? "Proposal")}</h3>
         <p class="muted">${escapeHtml(proposal.description ?? "")}</p>
       </div>
-      <span class="proposal-status">${escapeHtml(proposal.resolution)}</span>
+      <span class="proposal-status proposal-status--${escapeHtml(proposal.resolution)}">${escapeHtml(proposal.resolution)}</span>
       <p class="muted">Created by ${escapeHtml(proposal.createdBy.label ?? proposal.createdBy.id)} · ${proposal.proposedEvents.length} proposed event(s)</p>
+      ${actionButtons}
       <div class="proposal-events">
         ${proposal.proposedEvents.map(renderProposedEventItem).join("")}
       </div>
     </section>
   `;
+}
+
+function approveProposal(proposal: Proposal, state: WhiteboardState): void {
+  uiEvents.push(...proposal.proposedEvents.map((event) => cloneProposalEvent(event, state.board?.id ?? "board_1")));
+  uiEvents.push(createProposalResolvedEvent(proposal, "approved", proposal.proposedEvents.map((event) => event.id)));
+  showingProposalPreview = false;
+  dragState = null;
+  render();
+}
+
+function rejectProposal(proposal: Proposal, _state: WhiteboardState): void {
+  uiEvents.push(createProposalResolvedEvent(proposal, "rejected"));
+  showingProposalPreview = false;
+  dragState = null;
+  render();
+}
+
+function cloneProposalEvent(event: WhiteboardEvent, boardId: string): WhiteboardEvent {
+  return {
+    ...event,
+    boardId,
+    meta: {
+      ...event.meta,
+      source: "ui",
+      approvalStatus: "approved",
+    },
+  };
 }
 
 function createNoteAt(event: MouseEvent): void {
@@ -456,6 +519,38 @@ function createNodeUpdatedEvent(
   };
 }
 
+function createProposalResolvedEvent(
+  proposal: Proposal,
+  resolution: Extract<Proposal["resolution"], "approved" | "rejected" | "partially_approved">,
+  approvedEventIds?: string[],
+): Extract<WhiteboardEvent, { type: "proposal.resolved" }> {
+  const baseState = getBaseState();
+
+  return {
+    id: `event_ui_proposal_resolved_${uiEvents.length + 1}`,
+    boardId: baseState.board?.id ?? "board_1",
+    branchId: "main",
+    parentEventId: baseState.lastEventId ?? null,
+    actor: {
+      type: "human",
+      id: "demo_user",
+      label: "Demo user",
+    },
+    type: "proposal.resolved",
+    timestamp: new Date().toISOString(),
+    payload: {
+      proposalId: proposal.id,
+      resolution,
+      approvedEventIds,
+    },
+    meta: {
+      source: "ui",
+      approvalStatus: "not_required",
+      tags: ["demo", "proposal-resolution"],
+    },
+  };
+}
+
 function endDrag(event: PointerEvent): void {
   if (!dragState || dragState.pointerId !== event.pointerId) {
     return;
@@ -494,6 +589,10 @@ function getBaseState(): WhiteboardState {
   return uiEvents.length > 0
     ? replayEvents(uiEvents, baseSeedState)
     : baseSeedState;
+}
+
+function getCurrentProposal(state: WhiteboardState): Proposal | undefined {
+  return Object.values(state.proposals).find((proposal) => proposal.resolution === "pending");
 }
 
 function renderEventItem(event: WhiteboardEvent): string {

@@ -215,6 +215,16 @@ button {
   gap: 12px;
 }
 
+.proposal-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.danger-button {
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
 .proposal-status {
   display: inline-flex;
   align-self: flex-start;
@@ -225,6 +235,21 @@ button {
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.proposal-status--approved {
+  background: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+}
+
+.proposal-status--rejected {
+  background: rgba(248, 113, 113, 0.18);
+  color: #fca5a5;
+}
+
+.proposal-status--partially_approved {
+  background: rgba(96, 165, 250, 0.18);
+  color: #93c5fd;
 }
 
 .proposal-events {
