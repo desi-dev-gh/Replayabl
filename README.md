@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Architecture
 
 ## Overview
@@ -202,7 +203,6 @@ Likely strategy:
 - periodic full snapshots first
 - optional incremental snapshots later
 - restore from nearest checkpoint and replay forward
-
 ---
 
 ## 6. Collaboration Model
@@ -216,16 +216,11 @@ Capabilities:
 - merge or cherry-pick workflows
 - proposal review
 - approval and rejection
-- annotations on history
 - provenance inspection
 
 Important rule:
 
 Proposals should not be canonical events containing nested canonical events.
-
-A better model is:
-
-- proposals are drafts or review objects
 - approved proposals materialize ordinary committed events into a branch
 - rejection leaves an audit trail without contaminating the canonical event log
 
@@ -233,20 +228,10 @@ This keeps review state separate from committed history and avoids recursive eve
 
 Merge should be treated as domain-specific.
 
-Replayabl can provide merge infrastructure, but each app domain should define what a safe or meaningful merge means.
-
----
-
-## 7. Representation + Adapter Layer
 
 Event histories may be stored or exchanged in multiple representations, but these should be adapters around the runtime, not core runtime layers.
 
-TOON is a promising candidate for:
-
-- prompt serialization
-- project export/import
 - debugging
-- human-readable diffs
 - compact history sharing
 
 A pragmatic model:
@@ -254,19 +239,9 @@ A pragmatic model:
 - runtime: native typed objects + event storage (ensuring secrets and PII are stripped)
 - interchange: TOON or JSON
 - prompt context: TOON when it improves model efficiency
-- audit/debug export: TOON or JSON
-
-Important rule:
-
-The runtime should not depend on any single representation format.
-
-The action grammar matters more than TOON, JSON, or any other wire syntax.
 
 ---
 
-## End-to-End Flow
-
-Recommended flow:
 
 1. UI, agent, or importer submits a command
 2. validation + policy checks the command
@@ -276,33 +251,15 @@ Recommended flow:
 6. snapshots accelerate future loads
 
 For AI-assisted work:
-
-1. the model submits a structured proposal
-2. the proposal is validated and risk-checked
-3. the user previews the projected result
-4. approval commits ordinary events to a branch
-
 ---
 
 ## First Reference App Candidates
-
 Strong early candidates remain:
 
 - whiteboard / diagram editor
 - slide builder
 - workflow builder
 - form builder
-
-These are still the best starting points because they have:
-
-- clear action vocabularies
-- manageable replay semantics
-- obvious branch and review workflows
-- lower complexity than raster-heavy creative tools
-
-Avoid heavy creative tools first if they require complex rendering pipelines before the action model is proven.
-
----
 
 ## Key Risks To Address Early
 
@@ -313,14 +270,175 @@ Avoid heavy creative tools first if they require complex rendering pipelines bef
 - weak provenance for LLM-generated operations
 - attempting generic merge before domain rules exist
 
----
-
-## Open Questions
-
-- What is the minimal canonical event envelope for all apps?
-- Which fields belong in command metadata versus committed event metadata?
-- What proposal model best supports preview, approval, and partial approval?
 - How should sequence ordering work across branches?
 - Which merge capabilities can be framework-level versus domain-level?
 - When should TOON be preferred over compact JSON?
 - What should be part of core versus app-specific plugins?
+=======
+# Replayabl
+
+
+Instead of bolting AI onto legacy tools through adapters, Replayabl explores a different idea:
+
+> What if the application itself was designed so that both humans and models could understand, generate, inspect, replay, and refine the same sequence of actions?
+
+Replayabl is a framework vision for **AI-native applications** built on **event trees**, with a structured representation layer such as **TOON** for compact, LLM-friendly histories.
+
+- AI interacts through APIs, tools, or MCP adapters
+- the underlying application state is often opaque
+- workflows are difficult to replay, audit, or branch
+- AI actions feel bolted on rather than native
+
+- humans and LLMs both operate on the same action substrate
+- histories can be inspected, forked, compared, approved, and replayed
+
+
+
+That means:
+
+- every action is explicit
+- every state can be reconstructed
+- every edit has provenance
+- every AI-generated step can be reviewed
+An LLM becomes another.
+
+Both contribute to the same project history.
+Humans and LLMs can both contribute actions to the same project.
+
+### Replayability
+Try multiple alternatives without losing prior work.
+### Auditability
+Know which actions came from a human, which came from a model, and why.
+
+### Recoverability
+Undo, redo, compare, revert, and repair become natural.
+
+### AI-native workflows
+
+In an event-native app, the history is primary.
+
+For example, an image editor might record actions like:
+
+- import image
+- crop layer
+- add text
+- move layer
+- export
+
+A human might do the first few steps.
+
+An LLM might propose the next few.
+The system can then:
+
+- validate the actions
+- show a preview
+- let the human approve or modify them
+- branch into alternate versions
+- replay the result at any point
+## Why TOON
+
+Replayabl is interested in **TOON (Token-Oriented Object Notation)** as a possible representation for action histories.
+- structured
+- human-readable
+- LLM-friendly
+- well-suited to repeated event streams and uniform records
+
+That said, **TOON is not the product**.
+
+- explicit events
+- deterministic replay
+- branchable histories
+- shared human/AI interaction model
+
+TOON is one possible serialization layer for storage, interchange, prompt context, and debugging.
+
+---
+
+## How This Differs From MCP
+
+MCP makes existing tools callable.
+
+That is useful, but it still assumes the tool was built in an older human-first model.
+
+Replayabl explores a different approach:
+
+> Don’t just make legacy tools usable by AI.  
+> Build tools whose action model is already understandable to both humans and AI.
+That means:
+
+- no translation layer as the core idea
+- no fragile GUI puppeteering
+- no AI bolted awkwardly onto opaque state
+- state is derived
+- collaboration is native
+
+### 1. Events are the source of truth
+State should be reproducible from history.
+
+Every operation should be typed, inspectable, and validatable.
+
+### 3. Human and AI share the same substrate
+AI collaboration needs “try this instead” as a normal flow.
+### 6. Provenance matters
+Every event should record who or what produced it.
+
+
+## Best First Apps
+
+Replayabl should probably **not** start by rebuilding Photoshop.
+
+Better first candidates:
+
+- whiteboard / diagram editor
+- slide builder
+- workflow editor
+- form builder
+
+These domains have:
+
+- clearer action vocabularies
+- easier replay models
+- obvious collaboration patterns
+- lower implementation complexity
+
+The first reference app should prove the architecture, not exhaust it.
+
+---
+
+## Non-Goals
+
+At least for the beginning, Replayabl is **not** trying to:
+
+- replace JSON everywhere
+- create a universal storage format religion
+- rebuild every popular application at once
+- make a generic chatbot wrapper
+- automate everything without oversight
+
+This is about building a better substrate for shared human+AI work.
+
+---
+
+## Current Status
+
+This is an idea in progress.
+
+The hard parts are still open:
+
+- action grammar design
+- replay semantics
+- branch and merge strategy
+- deterministic model-assisted operations
+- TOON’s role in storage vs interchange vs prompting
+- choosing the right first reference app
+
+That’s the point of the project.
+
+---
+
+## Guiding Question
+
+> What would it look like to build applications where humans and LLMs work on the same explicit, replayable history instead of through separate interfaces and adapters?
+
+That’s the experiment.
+>>>>>>> 0659376 (Add initial TypeScript event model and reducer)
