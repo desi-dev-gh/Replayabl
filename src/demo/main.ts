@@ -1,14 +1,10 @@
 import "./styles.css";
 
-import { replayEvents, type Edge, type Group, type Proposal, type WhiteboardState } from "../core";
+import { replayEvents, type Edge, type Group, type Proposal, type WhiteboardEvent, type WhiteboardState } from "../core";
 import { seedWhiteboardEvents } from "../examples/demo-events";
 
-const baseState = replayEvents(seedWhiteboardEvents);
-const proposals = Object.values(baseState.proposals);
-const firstProposal = proposals[0];
-const previewState = firstProposal
-  ? replayEvents(firstProposal.proposedEvents, baseState)
-  : baseState;
+const uiEvents: WhiteboardEvent[] = [];
+const baseSeedState = replayEvents(seedWhiteboardEvents);
 
 const appElement = document.querySelector<HTMLDivElement>("#app");
 
@@ -18,15 +14,21 @@ if (!appElement) {
 
 const app = appElement;
 
-let showingProposalPreview = Boolean(firstProposal);
+let showingProposalPreview = Boolean(Object.keys(baseSeedState.proposals).length);
 
 render();
 
 function render(): void {
-  const activeState = showingProposalPreview ? previewState : baseState;
+  const baseState = getBaseState();
+  const proposals = Object.values(baseState.proposals);
+  const firstProposal = proposals[0];
+  const activeState = showingProposalPreview && firstProposal
+    ? replayEvents(firstProposal.proposedEvents, baseState)
+    : baseState;
   const proposalButton = firstProposal
     ? `<button class="${showingProposalPreview ? "ghost-button" : "primary-button"}" data-action="toggle-preview">${showingProposalPreview ? "Show current state" : "Preview proposal"}</button>`
     : "";
+  const eventStream = [...seedWhiteboardEvents, ...uiEvents];
 
   app.innerHTML = `
     <div class="shell">
@@ -64,10 +66,10 @@ function render(): void {
         ${firstProposal ? renderProposalPanel(firstProposal) : ""}
 
         <section class="panel">
-          <h3>Seeded event stream</h3>
+          <h3>Event stream</h3>
           <p class="muted">The board is derived entirely by replaying these events.</p>
           <div class="event-list">
-            ${seedWhiteboardEvents.map(renderEventItem).join("")}
+            ${eventStream.map(renderEventItem).join("")}
           </div>
         </section>
       </aside>
@@ -77,6 +79,14 @@ function render(): void {
   app.querySelector<HTMLElement>("[data-action='toggle-preview']")?.addEventListener("click", () => {
     showingProposalPreview = !showingProposalPreview;
     render();
+  });
+
+  app.querySelector<HTMLElement>(".board-surface")?.addEventListener("click", (event) => {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+
+    createNoteAt(event);
   });
 }
 
@@ -199,7 +209,56 @@ function renderProposalPanel(proposal: Proposal): string {
   `;
 }
 
-function renderEventItem(event: (typeof seedWhiteboardEvents)[number]): string {
+function createNoteAt(event: MouseEvent): void {
+  const boardSurface = event.currentTarget;
+
+  if (!(boardSurface instanceof HTMLElement)) {
+    return;
+  }
+
+  const rect = boardSurface.getBoundingClientRect();
+  const nodeId = `node_note_${uiEvents.length + 1}`;
+  const eventId = `event_ui_node_created_${uiEvents.length + 1}`;
+  const baseState = getBaseState();
+
+  uiEvents.push({
+    id: eventId,
+    boardId: baseState.board?.id ?? "board_1",
+    branchId: "main",
+    parentEventId: baseState.lastEventId ?? null,
+    actor: {
+      type: "human",
+      id: "demo_user",
+      label: "Demo user",
+    },
+    type: "node.created",
+    timestamp: new Date().toISOString(),
+    payload: {
+      nodeId,
+      kind: "note",
+      x: Math.max(24, Math.round(event.clientX - rect.left - 80)),
+      y: Math.max(24, Math.round(event.clientY - rect.top - 56)),
+      width: 160,
+      height: 112,
+      text: "New note",
+    },
+    meta: {
+      source: "ui",
+      approvalStatus: "not_required",
+      tags: ["demo", "click-create"],
+    },
+  });
+
+  render();
+}
+
+function getBaseState(): WhiteboardState {
+  return uiEvents.length > 0
+    ? replayEvents(uiEvents, baseSeedState)
+    : baseSeedState;
+}
+
+function renderEventItem(event: WhiteboardEvent): string {
   return `
     <div class="event-item">
       <p><strong>${escapeHtml(event.type)}</strong></p>

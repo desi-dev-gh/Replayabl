@@ -118,6 +118,16 @@ button {
   inset: 0;
 }
 
+.edges-layer,
+.groups-layer,
+.nodes-layer {
+  pointer-events: none;
+}
+
+.node-card {
+  pointer-events: auto;
+}
+
 .group-box {
   position: absolute;
   border-radius: 20px;
