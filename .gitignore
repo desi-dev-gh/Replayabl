@@ -12,3 +12,8 @@ coverage/
 Thumbs.db
 .vscode/
 .idea/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.tsbuildinfo
+.vite/

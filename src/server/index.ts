@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import path from "node:path";
 import { type WhiteboardEvent } from "../core/events";
+import { seedWhiteboardEvents } from "../examples/demo-events";
 
 // 1. Initialize SQLite
 const dbPath = path.resolve(process.cwd(), "replayabl.sqlite");
@@ -50,6 +51,52 @@ const getEventsStmt = db.prepare(`
   ORDER BY sequence ASC
 `);
 
+const getEventIdsStmt = db.prepare(`
+  SELECT id FROM events
+  WHERE boardId = ? AND branchId = ?
+`);
+
+function toInsertRow(event: WhiteboardEvent) {
+  return {
+    id: event.id,
+    boardId: event.boardId,
+    branchId: event.branchId,
+    parentEventId: event.parentEventId || null,
+    sequence: event.sequence,
+    schemaVersion: event.schemaVersion || 1,
+    type: event.type,
+    actorId: event.actor.id,
+    actorType: event.actor.type,
+    actorLabel: event.actor.label || null,
+    timestamp: event.timestamp,
+    payload: JSON.stringify(event.payload),
+    meta: event.meta ? JSON.stringify(event.meta) : null,
+  };
+}
+
+function ensureDemoSeedEvents(): void {
+  const boardId = "board_1";
+  const branchId = "main";
+  const existingIds = new Set(
+    (getEventIdsStmt.all(boardId, branchId) as Array<{ id: string }>).map((row) => row.id)
+  );
+  const missingSeedEvents = seedWhiteboardEvents.filter((event) => !existingIds.has(event.id));
+
+  if (missingSeedEvents.length === 0) {
+    return;
+  }
+
+  const insertMissingSeedEvents = db.transaction((events: WhiteboardEvent[]) => {
+    for (const event of events) {
+      insertEventStmt.run(toInsertRow(event));
+    }
+  });
+
+  insertMissingSeedEvents(missingSeedEvents);
+}
+
+ensureDemoSeedEvents();
+
 // 3. Setup Express API
 const app = express();
 app.use(cors());
@@ -93,23 +140,7 @@ app.post("/api/events", (req, res) => {
   const event = req.body as WhiteboardEvent;
 
   try {
-    insertEventStmt.run({
-      id: event.id,
-      boardId: event.boardId,
-      branchId: event.branchId,
-      parentEventId: event.parentEventId || null,
-      sequence: event.sequence,
-      schemaVersion: event.schemaVersion || 1,
-      type: event.type,
-      // Flattening actor for SQL storage
-      actorId: event.actor.id,
-      actorType: event.actor.type,
-      actorLabel: event.actor.label || null,
-      timestamp: event.timestamp,
-      // Storing nested objects as SQLite JSON
-      payload: JSON.stringify(event.payload),
-      meta: event.meta ? JSON.stringify(event.meta) : null,
-    });
+    insertEventStmt.run(toInsertRow(event));
     
     res.json({ success: true, eventId: event.id });
   } catch (error: any) {

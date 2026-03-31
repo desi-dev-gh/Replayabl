@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "server": "tsx src/server/index.ts",
-    "dev": "vite",
+    "dev": "concurrently \"npm:server\" \"vite\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview"
@@ -14,6 +14,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "concurrently": "^9.1.2",
     "tsx": "^4.21.0",
     "typescript": "^5.8.2",
     "vite": "^6.3.5"
