@@ -49,9 +49,10 @@ Ingress should produce commands, drafts, or proposals, not committed events.
 Why:
 
 - LLM output is untrusted input
-- UI actions may still need normalization
+- UI actions may still need normalization (e.g., debouncing high-frequency events like dragging into momentary drafts)
 - authorization and approval decisions should happen before append
 - replay logs should contain only validated, canonical events
+- ingress must defend against DoS by enforcing strict payload size and depth limits
 
 Examples:
 
@@ -97,6 +98,8 @@ Security-sensitive checks to make explicit:
 - approval gates for risky or destructive actions
 - provenance completeness for model-generated actions
 
+To support AI workflows, the validation boundary should not just return a boolean, but a structured outcome (e.g., a `Result` type) containing detailed failure reasons. This allows the framework to feed rejection contexts back to the LLM for self-correction.
+
 ---
 
 ## 3. Event Store + Branch Registry
@@ -116,6 +119,10 @@ Suggested canonical event shape:
 - `sequence` or append order for deterministic replay
 - `schemaVersion`
 - `meta` for provenance and policy decisions
+
+To ensure system integrity, the event store must mandate **Optimistic Concurrency Control (OCC)**. Commands must target a specific `parentEventId` or `sequence`, explicitly rejecting writes that operate on stale state.
+
+Additionally, to support data privacy (GDPR/CCPA) in an immutable log, the framework should recommend **Crypto-Shredding**. Sensitive PII stored in payloads should be encrypted with a unique key per user/tenant, allowing the data to be "deleted" by dropping the key.
 
 The branch model should be explicit.
 
@@ -143,6 +150,8 @@ Application state is derived by replaying committed events through deterministic
 
 Requirements:
 
+- **Upcaster pattern support:** mutating old event payloads into the latest `schemaVersion` in memory before they hit reducers
+- **Output sanitization:** projections must sanitize output before rendering to protect against prompt injection or malicious payloads being evaluated
 - deterministic execution
 - predictable ordering rules
 - explicit error handling for invalid histories
@@ -242,7 +251,7 @@ TOON is a promising candidate for:
 
 A pragmatic model:
 
-- runtime: native typed objects + event storage
+- runtime: native typed objects + event storage (ensuring secrets and PII are stripped)
 - interchange: TOON or JSON
 - prompt context: TOON when it improves model efficiency
 - audit/debug export: TOON or JSON
