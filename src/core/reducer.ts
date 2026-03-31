@@ -1,4 +1,5 @@
 import { WhiteboardEvent } from "./events";
+import { EventUpcaster } from "./framework";
 import {
   createEdgeStyle,
   createGroupStyle,
@@ -15,6 +16,13 @@ export class ReplayablReducerError extends Error {
 }
 
 export function applyEvent(state: WhiteboardState, event: WhiteboardEvent): WhiteboardState {
+  if (event.sequence && event.sequence <= state.lastSequence) {
+    throw new ReplayablReducerError(
+      `OCC Validation Failed: Event sequence (${event.sequence}) is older or equal to current state (${state.lastSequence})`
+    );
+  }
+
+  // Deep clone state (pseudo-implementation since cloneState is assumed)
   const next = cloneState(state);
 
   switch (event.type) {
@@ -183,13 +191,38 @@ export function applyEvent(state: WhiteboardState, event: WhiteboardEvent): Whit
 
   next.eventCount += 1;
   next.lastEventId = event.id;
+  if (event.sequence) next.lastSequence = event.sequence;
+  if (event.schemaVersion) next.schemaVersion = event.schemaVersion;
   next.lastUpdatedAt = event.timestamp;
   return next;
 }
 
-export function replayEvents(events: WhiteboardEvent[], initial: WhiteboardState = createInitialState()): WhiteboardState {
-  return events.reduce((state, event) => applyEvent(state, event), initial);
+export function replayEvents(
+  events: WhiteboardEvent[], 
+  initial: WhiteboardState = createInitialState(),
+  upcasters: EventUpcaster<WhiteboardEvent>[] = []
+): WhiteboardState {
+  return events.reduce((state, rawEvent) => {
+    // 1. Upcast older events to the latest schema version in memory
+    let eventToPlay = rawEvent;
+    
+    if (eventToPlay.schemaVersion && eventToPlay.schemaVersion < state.schemaVersion) {
+      for (const upcaster of upcasters) {
+        if (
+          upcaster.fromVersion === eventToPlay.schemaVersion && 
+          upcaster.eventType === eventToPlay.type
+        ) {
+          eventToPlay = upcaster.upcast(eventToPlay);
+        }
+      }
+    }
+
+    // 2. Reduce the validated/upcasted event
+    return applyEvent(state, eventToPlay);
+  }, initial);
 }
+
+// Assumed helper for cloning state
 
 function ensureBranch(state: WhiteboardState, branchId: string, timestamp: string): void {
   if (!state.branches[branchId]) {
@@ -214,6 +247,7 @@ function pickPrimitiveChanges(
 function cloneState(state: WhiteboardState): WhiteboardState {
   return {
     board: state.board ? { ...state.board } : null,
+    schemaVersion: state.schemaVersion,
     branches: { ...state.branches },
     nodes: { ...state.nodes },
     edges: { ...state.edges },
@@ -222,6 +256,7 @@ function cloneState(state: WhiteboardState): WhiteboardState {
     deletedEdgeIds: { ...state.deletedEdgeIds },
     proposals: { ...state.proposals },
     eventCount: state.eventCount,
+    lastSequence: state.lastSequence,
     lastEventId: state.lastEventId,
     lastUpdatedAt: state.lastUpdatedAt,
   };

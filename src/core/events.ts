@@ -19,11 +19,13 @@ export type EventEnvelope<TType extends string, TPayload> = {
   boardId: string;
   branchId: string;
   parentEventId?: string | null;
+  sequence?: number; // Added for OCC
+  schemaVersion?: number; // Added for Upcasters
   actor: ActorRef;
   type: TType;
   timestamp: string;
   payload: TPayload;
-  meta?: EventMeta;
+  meta?: EventMeta & { isEncrypted?: boolean };
 };
 
 export type NodeKind = "note" | "shape" | "textBlock" | "image" | "codeBlock";

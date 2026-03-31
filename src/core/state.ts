@@ -75,6 +75,7 @@ export type Branch = {
 
 export type WhiteboardState = {
   board: Board | null;
+  schemaVersion: number;
   branches: Record<string, Branch>;
   nodes: Record<string, Node>;
   edges: Record<string, Edge>;
@@ -83,12 +84,14 @@ export type WhiteboardState = {
   deletedEdgeIds: Record<string, true>;
   proposals: Record<string, Proposal>;
   eventCount: number;
+  lastSequence: number;
   lastEventId?: string;
   lastUpdatedAt?: string;
 };
 
-export const createInitialState = (): WhiteboardState => ({
+export const createInitialState = (schemaVersion = 1): WhiteboardState => ({
   board: null,
+  schemaVersion,
   branches: {},
   nodes: {},
   edges: {},
@@ -97,6 +100,7 @@ export const createInitialState = (): WhiteboardState => ({
   deletedEdgeIds: {},
   proposals: {},
   eventCount: 0,
+  lastSequence: 0,
   lastEventId: undefined,
   lastUpdatedAt: undefined,
 });
