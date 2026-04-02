@@ -42,6 +42,9 @@ The ingress layer receives input from:
 - imports from external formats
 - system automation
 
+**Ephemeral State Layer & Event Noise:**
+High-frequency UI gestures (like dragging, cursor movement, or typing) degrade the event log. The framework defines an Ephemeral State Layer—these actions never reach the Ingress Layer as commands. Instead, they are broadcasted via WebSockets/WebRTC for immediate visual presence feedback. The Ingress Layer only receives a single canonical command (e.g., `NodeMoved`) when the user finishes the interaction.
+
 Important rule:
 
 Ingress should produce commands, drafts, or proposals, not committed events.
@@ -116,11 +119,14 @@ Suggested canonical event shape:
 - `actor`
 - `payload`
 - `parentEventId` for causality
-- `sequence` or append order for deterministic replay
+- `sequence` for causal ordering / Lamport timestamp
+- `compensatesEventId` for first-class compensating actions
 - `schemaVersion`
 - `meta` for provenance and policy decisions
 
-To ensure system integrity, the event store must mandate **Optimistic Concurrency Control (OCC)**. Commands must target a specific `parentEventId` or `sequence`, explicitly rejecting writes that operate on stale state.
+To ensure system integrity without constant merge rejections during AI workflows, the event store favors **Conflict-free Replicated Data Types (CRDTs)** or **Causal Ordering (e.g., Lamport timestamps)** over strict Optimistic Concurrency Control (OCC). This allows non-conflicting concurrent actions from humans and LLMs to merge cleanly.
+
+Additionally, applications often have side effects (triggering a webhook, sending an email) that cannot be "un-replayed". If a branch is rejected or time-traveled backwards, the framework emits **First-Class Compensating Actions** (`compensatesEventId`) to handle external side-effects gracefully.
 
 Additionally, to support data privacy (GDPR/CCPA) in an immutable log, the framework should recommend **Crypto-Shredding**. Sensitive PII stored in payloads should be encrypted with a unique key per user/tenant, allowing the data to be "deleted" by dropping the key.
 
@@ -179,7 +185,9 @@ This layer can expose multiple projections:
 
 ## 5. Snapshot Layer
 
-Snapshots are an optimization for replay, not the source of truth.
+Snapshots are an optimization for replay, not the source of truth, **but they are critical for AI prompting**. 
+
+You cannot feed a 10,000-event history into an LLM prompt. The Snapshot Layer acts as a first-class citizen for LLM context windows.
 
 Snapshot responsibilities:
 
@@ -187,6 +195,7 @@ Snapshot responsibilities:
 - support fast loading
 - preserve deterministic restoration
 - support branch-specific restore points
+- **act as the base for LLM Prompts (`[Latest Snapshot State] + [Last N Events]`)**
 
 Recommended snapshot metadata:
 
@@ -241,10 +250,11 @@ Replayabl can provide merge infrastructure, but each app domain should define wh
 
 Event histories may be stored or exchanged in multiple representations, but these should be adapters around the runtime, not core runtime layers.
 
-TOON is a promising candidate for:
+**JSON Schema vs. TOON:**
+While custom serialization like **TOON (Token-Oriented Object Notation)** is interesting for token efficiency, modern LLMs are heavily fine-tuned for structured **JSON output**. Replayabl strictly prioritizes JSON and JSON Schema for core event payloads, relying on guaranteed valid generation to minimize validation burden.
 
-- prompt serialization
-- project export/import
+TOON remains a potential candidate for:
+
 - debugging
 - human-readable diffs
 - compact history sharing
@@ -252,8 +262,7 @@ TOON is a promising candidate for:
 A pragmatic model:
 
 - runtime: native typed objects + event storage (ensuring secrets and PII are stripped)
-- interchange: TOON or JSON
-- prompt context: TOON when it improves model efficiency
+- interchange: **JSON Schema-validated JSON**
 - audit/debug export: TOON or JSON
 
 Important rule:

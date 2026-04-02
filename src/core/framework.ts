@@ -91,3 +91,47 @@ export interface EventUpcaster<TEvent = any> {
 export interface CommandPolicy<TCommand = any> {
   evaluate(command: TCommand, currentState: any): ValidationResult<TCommand>;
 }
+
+import { WhiteboardEvent } from "./events";
+import { WhiteboardState } from "./state";
+import { replayEvents } from "./reducer";
+
+export class Framework {
+  private events: WhiteboardEvent[] = [];
+  private state: WhiteboardState | null = null;
+  private listeners: Set<(state: WhiteboardState, events: WhiteboardEvent[]) => void> = new Set();
+  
+  constructor(initialEvents: WhiteboardEvent[] = []) {
+    this.events = initialEvents;
+    this.state = replayEvents(initialEvents);
+  }
+
+  getEvents() {
+    return this.events;
+  }
+  
+  getState() {
+    if (!this.state) {
+      this.state = replayEvents(this.events);
+    }
+    return this.state;
+  }
+  
+  appendEvent(event: WhiteboardEvent) {
+    this.events.push(event);
+    this.state = replayEvents(this.events);
+    this.notify();
+  }
+  
+  subscribe(listener: (state: WhiteboardState, events: WhiteboardEvent[]) => void) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+  
+  private notify() {
+    const s = this.getState();
+    this.listeners.forEach(l => l(s, this.events));
+  }
+}
+
+

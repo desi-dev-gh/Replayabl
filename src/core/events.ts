@@ -19,7 +19,8 @@ export type EventEnvelope<TType extends string, TPayload> = {
   boardId: string;
   branchId: string;
   parentEventId?: string | null;
-  sequence?: number; // Added for OCC
+  sequence?: number; // Causal ordering / Lamport timestamp (replaces strict OCC)
+  compensatesEventId?: string; // For first-class compensating actions
   schemaVersion?: number; // Added for Upcasters
   actor: ActorRef;
   type: TType;
@@ -28,7 +29,7 @@ export type EventEnvelope<TType extends string, TPayload> = {
   meta?: EventMeta & { isEncrypted?: boolean };
 };
 
-export type NodeKind = "note" | "shape" | "textBlock" | "image" | "codeBlock";
+export type NodeKind = "compute" | "database" | "storage" | "network" | "motor" | "gear" | "beam" | "sensor" | "note" | "shape" | "textBlock" | "image";
 
 export type NodeStyle = {
   backgroundColor: string;
